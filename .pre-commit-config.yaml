@@ -1,0 +1,66 @@
+repos:
+  # Python code formatting and linting
+  - repo: https://github.com/psf/black
+    rev: 25.1.0
+    hooks:
+      - id: black
+        language_version: python3.11
+        files: ^backend/app/.*\.py$
+  
+  - repo: https://github.com/pycqa/isort
+    rev: 6.0.1
+    hooks:
+      - id: isort
+        files: ^backend/app/.*\.py$
+        args: ["--profile", "black"]
+  
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.3.0
+    hooks:
+      - id: flake8
+        files: ^backend/app/.*\.py$
+        args: ["--max-line-length=88", "--extend-ignore=E203,W503"]
+  
+  # Frontend linting
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v9.18.0
+    hooks:
+      - id: eslint
+        files: ^frontend/.*\.(ts|tsx|js|jsx)$
+        additional_dependencies:
+          - eslint@^9.0.0
+          - "@next/eslint-config-next@^15.0.0"
+          - typescript@^5.0.0
+  
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-yaml
+      - id: check-json
+        exclude: ^(frontend/package-lock\.json|backend/uv\.lock)$
+  
+  # Security checks
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.6
+    hooks:
+      - id: bandit
+        files: ^backend/app/.*\.py$
+        args: ["-c", "pyproject.toml"]
+
+# Configure pre-commit to run in specific environments
+ci:
+  autofix_commit_msg: |
+    [pre-commit.ci] auto fixes from pre-commit hooks
+    
+    for more information, see https://pre-commit.ci
+  autofix_prs: true
+  autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
+  autoupdate_schedule: weekly
+  skip: []
+  submodules: false

@@ -1,0 +1,5 @@
+FROM hf.co/unsloth/gemma-3-270m-it-GGUF:Q8_0
+
+PARAMETER temperature 1
+
+SYSTEM """You are Instructify and you are here to help students."""
