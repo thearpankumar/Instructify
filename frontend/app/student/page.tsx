@@ -64,7 +64,7 @@ export default function StudentPage() {
                 value={studentName}
                 onChange={(e) => setStudentName(e.target.value)}
                 placeholder="Enter your name"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-black"
                 disabled={isJoining}
               />
             </div>
@@ -77,9 +77,9 @@ export default function StudentPage() {
                 type="text"
                 id="classId"
                 value={classId}
-                onChange={(e) => setClassId(e.target.value.toUpperCase())}
+                onChange={(e) => setClassId(e.target.value)}
                 placeholder="Enter 8-character class ID (e.g., ABC123XY)"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none font-mono tracking-wider"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none font-mono tracking-wider text-black"
                 maxLength={8}
                 disabled={isJoining}
               />

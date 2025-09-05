@@ -64,7 +64,7 @@ export default function TeacherPage() {
                 value={teacherName}
                 onChange={(e) => setTeacherName(e.target.value)}
                 placeholder="Enter your name"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-black"
                 disabled={isCreating}
               />
             </div>
