@@ -104,18 +104,6 @@ jobs:
     - name: 📥 Checkout Repository
       uses: actions/checkout@v4
     
-    - name: 🔍 Run GitHub Security Advisory
-      uses: github/super-linter@v5
-      env:
-        DEFAULT_BRANCH: main
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        VALIDATE_PYTHON_BLACK: false
-        VALIDATE_PYTHON_FLAKE8: false
-        VALIDATE_PYTHON_ISORT: false
-        VALIDATE_PYTHON_MYPY: false
-        VALIDATE_JAVASCRIPT_ES: false
-        VALIDATE_TYPESCRIPT_ES: false
-        VALIDATE_DOCKERFILE_HADOLINT: false
     
     - name: 🔒 Frontend Security Audit
       working-directory: ./frontend

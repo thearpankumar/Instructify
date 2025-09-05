@@ -71,6 +71,12 @@ if command -v uv &> /dev/null; then
         print_warning "mypy: Type checking issues found. Please review above."
     fi
     
+    print_status "Running Bandit (Security Check)..."
+    if uv run bandit -r app/ -f json > /dev/null 2>&1; then
+        print_success "Bandit: Security check passed!"
+    else
+        print_warning "Bandit: Security issues found. Please review."
+    fi
     
 else
     print_error "uv not found. Please install uv to run backend linting."
