@@ -33,42 +33,25 @@ Instructify isn't just another video conferencing tool - it's a **next-generatio
 - 🛡️ **AI Spam Filtering** - Advanced content moderation with context awareness
 - 💬 **Context-Aware Responses** - AI understands lecture content for relevant answers
 
-### 🚀 **Mind-Blowing Features**
+### Core Features
 
-<table>
-<tr>
-<td width="50%">
+#### Real-time Communication
+- **WebRTC Video Streaming**: Low-latency teacher-to-students broadcasting
+- **Live Chat System**: Real-time messaging with WebSocket technology
+- **Screen Sharing**: High-quality screen capture and streaming
+- **Cross-platform Support**: Compatible with modern web browsers
 
-#### 🎥 **Live Video Streaming**
-- **WebRTC-powered** low-latency streaming
-- Teacher-to-students broadcast
-- HD video quality with audio
-- Screen sharing capabilities
+#### AI-Powered Learning
+- **Intelligent Content Filtering**: Dual-layer protection using keywords and AI analysis
+- **Smart Doubt Classification**: Automatic detection of genuine academic questions
+- **Context-aware AI Assistant**: Educational responses based on lecture content
+- **Real-time Moderation**: Instant filtering of inappropriate content
 
-#### 💬 **Intelligent Chat System**
-- **Real-time messaging** with WebSockets
-- **Dual-mode chat**: Public + AI assistant
-- **Smart routing** of student queries
-- **Teacher notifications** for important doubts
-
-</td>
-<td width="50%">
-
-#### 📊 **Analytics & Insights**
-- **Engagement tracking** and participation metrics
-- **Real-time attendance** via WebRTC connections
-- **Learning analytics** dashboard
-- **Performance insights** for educators
-
-#### 🎨 **Modern UI/UX**
-- **Responsive design** with Tailwind CSS
-- **Dark/Light themes** support
-- **Intuitive navigation** for all user types
-- **Mobile-friendly** interface
-
-</td>
-</tr>
-</table>
+#### User Experience
+- **Professional Interface**: Clean, intuitive design for both teachers and students
+- **Responsive Design**: Optimized for desktop and mobile devices
+- **Role-based Access**: Separate interfaces for teachers and students
+- **Easy Setup**: Simple classroom creation and joining process
 
 ---
 
@@ -135,7 +118,7 @@ cd Instructify
 ```bash
 cd backend
 uv add fastapi "uvicorn[standard]" websockets python-socketio pydantic langchain langgraph google-generativeai httpx
-uv run python -m app.main
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 > 🚀 **Backend running on**: http://localhost:8000
 
@@ -289,32 +272,31 @@ const notes = await getGeneratedNotes(classId);
 
 ---
 
-## 🌈 **Roadmap & Future Features**
+## Development Roadmap
 
-<div align="center">
-
-### 🎯 **Phase 1 - COMPLETED** ✅
-- [x] Core FastAPI + Next.js infrastructure
-- [x] Real-time WebSocket communication
-- [x] AI assistant with Gemma 270M
-- [x] Smart doubt classification
+### Phase 1 - Core Platform (Completed)
+- [x] FastAPI backend with WebSocket support
+- [x] Next.js 15 frontend with TypeScript
+- [x] Real-time video streaming via WebRTC
+- [x] AI-powered content filtering with Gemini 2.5 Flash Lite
+- [x] Intelligent chat system with dual-layer moderation
 - [x] Teacher/Student role management
+- [x] Cross-browser compatibility
 
-### 🚧 **Phase 2 - IN PROGRESS** 🔄
-- [ ] WebRTC video streaming implementation
-- [ ] Gemini 2.5 Flash Lite transcription
-- [ ] Advanced spam filtering with LangGraph
-- [ ] Auto-generated notes from transcripts
+### Phase 2 - Enhanced Features (In Progress)
+- [ ] Voice transcription and live captions
+- [ ] Automated class notes generation
+- [ ] Advanced analytics dashboard
+- [ ] Enhanced mobile responsiveness
+- [ ] Performance optimization
 
-### 🔮 **Phase 3 - PLANNED** 📅
-- [ ] Interactive whiteboard with AI annotations
-- [ ] Virtual breakout rooms with AI moderation
-- [ ] Multi-language support (50+ languages)
-- [ ] Advanced analytics & learning insights
-- [ ] Mobile app (React Native)
-- [ ] Blockchain-based certificates
-
-</div>
+### Phase 3 - Advanced Capabilities (Planned)
+- [ ] Interactive whiteboard collaboration
+- [ ] Breakout room functionality
+- [ ] Multi-language support
+- [ ] Learning analytics and insights
+- [ ] Mobile application (React Native)
+- [ ] Integration with LMS platforms
 
 ---
 
