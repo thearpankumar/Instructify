@@ -183,19 +183,11 @@ class ChatHandler:
         if not self.room_manager:
             return
 
-        # Forward WebRTC signals to other users in the room
-        signal_data = {
-            "type": "webrtc_signal",
-            "signal_type": message_data.get("signal_type"),
-            "signal": message_data.get("signal"),
-            "from": self.room_manager.user_connections.get(websocket, {}).get(
-                "user_name", "Anonymous"
-            ),
-        }
-
-        await self.room_manager.broadcast_to_room(
-            class_id, signal_data, exclude=websocket
-        )
+        print(f"🔧 Backend handling WebRTC signal: {message_data.get('signal_type')}")
+        print(f"📋 Full message data: {message_data}")
+        
+        # Use the new WebRTC signaling handler
+        await self.room_manager.handle_webrtc_signaling(class_id, websocket, message_data)
 
     def get_chat_history(self, class_id: str) -> List[dict]:
         """Get chat history for a classroom"""
