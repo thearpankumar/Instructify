@@ -145,6 +145,10 @@ export default function ClassroomContent({ classId }: { classId: string }) {
           case 'webrtc_signal':
             await handleWebRTCSignaling(data);
             break;
+          case 'message_blocked':
+            // Show warning to user that their message was blocked
+            alert(`⚠️ Message Blocked: ${data.reason}`);
+            break;
         }
       };
 
@@ -878,7 +882,7 @@ export default function ClassroomContent({ classId }: { classId: string }) {
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder={isAIMode ? "Ask AI assistant..." : "Type a message..."}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm text-black"
               />
               <button
                 onClick={sendMessage}
