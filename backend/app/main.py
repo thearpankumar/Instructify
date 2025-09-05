@@ -1,8 +1,12 @@
 import json
 import uuid
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+
+# Load environment variables from .env file
+load_dotenv()
 
 from .models.classroom import ClassroomCreate
 from .websockets.chat_handler import ChatHandler

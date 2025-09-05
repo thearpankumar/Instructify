@@ -6,14 +6,21 @@ from typing import Dict, List
 from fastapi import WebSocket
 
 from ..models.chat import ChatMessage
-from ..services.ollama_client import OllamaClient
+from ..services.gemini_client import GeminiClient
 
 
 class ChatHandler:
     def __init__(self, room_manager=None):
         self.messages: Dict[str, List[ChatMessage]] = {}  # class_id -> messages
         self.room_manager = room_manager
-        self.ollama_client = OllamaClient()
+        
+        # GeminiClient for AI chat responses and content filtering
+        try:
+            self.gemini_client = GeminiClient()
+        except ValueError as e:
+            print(f"Warning: GeminiClient initialization failed: {e}")
+            print("Content filtering and AI responses will be disabled.")
+            self.gemini_client = None
 
     async def handle_message(
         self, class_id: str, websocket: WebSocket, message_data: dict
@@ -40,15 +47,46 @@ class ChatHandler:
         sender_type = sender_info.get("user_type", "student")
         message_text = message_data.get("message", "")
 
+        # First, filter all messages for harmful content
+        if self.gemini_client:
+            try:
+                content_filter = await self.gemini_client.filter_content(message_text)
+                if not content_filter.get("is_safe", False):
+                    # Block harmful message - don't broadcast it
+                    print(f"🚫 Blocked harmful chat message from {sender_name}: {message_text}")
+                    print(f"Filter reason: {content_filter.get('reason')} (Filter type: {content_filter.get('filter_type')})")
+                    
+                    # Send warning to sender only
+                    await websocket.send_text(json.dumps({
+                        "type": "message_blocked",
+                        "reason": "Your message was blocked for inappropriate content. Please keep our classroom discussions educational and respectful.",
+                        "timestamp": datetime.now().isoformat(),
+                    }))
+                    return  # Don't process or broadcast the message
+            except Exception as e:
+                print(f"Content filtering error: {e}")
+                # On error, allow message but log the issue
+        else:
+            print("Warning: No content filtering available - GeminiClient not initialized")
+        
         # For students, check if this is a genuine doubt for the teacher
         is_doubt = False
         if sender_type == "student":
             try:
                 # Get context and classify the message
                 context = self._get_recent_context(class_id)
-                classification = await self.ollama_client.classify_doubt(
-                    message_text, context
-                )
+                if self.gemini_client:
+                    classification = await self.gemini_client.classify_doubt(
+                        message_text, context
+                    )
+                else:
+                    # Fallback - no classification available
+                    classification = {
+                        "is_genuine_doubt": False,
+                        "confidence": 0.0,
+                        "reason": "Classification unavailable",
+                        "category": "unknown"
+                    }
                 is_doubt = classification.get("is_genuine_doubt", False)
 
                 # If it's a genuine doubt, flag it for teacher attention
@@ -115,10 +153,13 @@ class ChatHandler:
             # Get lecture context from recent messages
             lecture_context = self._get_recent_context(class_id)
 
-            # Generate AI response using Ollama
-            ai_response = await self.ollama_client.answer_student_query(
-                query, lecture_context
-            )
+            # Generate AI response using Gemini
+            if self.gemini_client:
+                ai_response = await self.gemini_client.answer_student_query(
+                    query, lecture_context
+                )
+            else:
+                ai_response = "I'm currently unavailable. Please try again later or ask your teacher directly."
 
             if ai_response:
                 await websocket.send_text(
