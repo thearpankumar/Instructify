@@ -1,0 +1,286 @@
+name: 🚀 Deploy to Production
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # 🐳 Build Docker Images
+  build-images:
+    name: 🐳 Build Docker Images
+    runs-on: ubuntu-latest
+    outputs:
+      backend-image: ${{ steps.image-meta.outputs.backend-tags }}
+      frontend-image: ${{ steps.image-meta.outputs.frontend-tags }}
+    
+    steps:
+    - name: 📥 Checkout Repository
+      uses: actions/checkout@v4
+    
+    - name: 🔐 Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: 🏷️ Extract Metadata
+      id: image-meta
+      run: |
+        echo "backend-tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ github.sha }}" >> $GITHUB_OUTPUT
+        echo "frontend-tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:${{ github.sha }}" >> $GITHUB_OUTPUT
+    
+    - name: 🐳 Build Backend Docker Image
+      run: |
+        cat > backend/Dockerfile << 'EOF'
+        FROM python:3.11-slim
+        
+        WORKDIR /app
+        
+        # Install uv
+        COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+        
+        # Copy uv files
+        COPY pyproject.toml uv.lock ./
+        
+        # Install dependencies
+        RUN uv sync --frozen --no-dev
+        
+        # Copy application code
+        COPY app/ ./app/
+        
+        # Expose port
+        EXPOSE 8000
+        
+        # Run application
+        CMD ["uv", "run", "python", "-m", "app.main"]
+        EOF
+        
+        docker build -t ${{ steps.image-meta.outputs.backend-tags }} backend/
+        docker push ${{ steps.image-meta.outputs.backend-tags }}
+    
+    - name: 🌐 Build Frontend Docker Image
+      run: |
+        cat > frontend/Dockerfile << 'EOF'
+        # Build stage
+        FROM node:18-alpine AS builder
+        
+        WORKDIR /app
+        
+        # Copy package files
+        COPY package*.json ./
+        
+        # Install dependencies
+        RUN npm ci
+        
+        # Copy source code
+        COPY . .
+        
+        # Build application
+        RUN npm run build
+        
+        # Production stage
+        FROM node:18-alpine AS production
+        
+        WORKDIR /app
+        
+        # Copy built application
+        COPY --from=builder /app/.next ./.next
+        COPY --from=builder /app/public ./public
+        COPY --from=builder /app/package*.json ./
+        COPY --from=builder /app/node_modules ./node_modules
+        
+        # Expose port
+        EXPOSE 3000
+        
+        # Run application
+        CMD ["npm", "start"]
+        EOF
+        
+        docker build -t ${{ steps.image-meta.outputs.frontend-tags }} frontend/
+        docker push ${{ steps.image-meta.outputs.frontend-tags }}
+
+  # 📋 Create Deployment Manifest
+  create-manifest:
+    name: 📋 Create Deployment Manifest
+    runs-on: ubuntu-latest
+    needs: build-images
+    
+    steps:
+    - name: 📥 Checkout Repository
+      uses: actions/checkout@v4
+    
+    - name: 📝 Generate Docker Compose
+      run: |
+        cat > docker-compose.prod.yml << EOF
+        version: '3.8'
+        
+        services:
+          backend:
+            image: ${{ needs.build-images.outputs.backend-image }}
+            ports:
+              - "8000:8000"
+            environment:
+              - ENVIRONMENT=production
+            restart: unless-stopped
+            healthcheck:
+              test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+              interval: 30s
+              timeout: 10s
+              retries: 3
+        
+          frontend:
+            image: ${{ needs.build-images.outputs.frontend-image }}
+            ports:
+              - "3000:3000"
+            environment:
+              - NODE_ENV=production
+              - NEXT_PUBLIC_API_URL=http://localhost:8000
+            restart: unless-stopped
+            depends_on:
+              - backend
+            healthcheck:
+              test: ["CMD", "curl", "-f", "http://localhost:3000"]
+              interval: 30s
+              timeout: 10s
+              retries: 3
+        
+        networks:
+          default:
+            driver: bridge
+        EOF
+    
+    - name: 📤 Upload Docker Compose
+      uses: actions/upload-artifact@v4
+      with:
+        name: docker-compose-production
+        path: docker-compose.prod.yml
+        retention-days: 30
+    
+    - name: 🚀 Generate Deployment Instructions
+      run: |
+        cat > DEPLOYMENT.md << EOF
+        # 🚀 Instructify Production Deployment
+        
+        ## Quick Start
+        
+        \`\`\`bash
+        # Download the docker-compose file
+        curl -O https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/docker-compose.prod.yml
+        
+        # Start the services
+        docker-compose -f docker-compose.prod.yml up -d
+        
+        # Check status
+        docker-compose -f docker-compose.prod.yml ps
+        \`\`\`
+        
+        ## Access the Application
+        
+        - 🌐 **Frontend**: http://localhost:3000
+        - 🔗 **Backend API**: http://localhost:8000
+        - 📊 **Health Check**: http://localhost:8000/health
+        
+        ## Environment Setup
+        
+        Make sure you have Ollama running with Gemma 3 270M model:
+        
+        \`\`\`bash
+        # Install Ollama
+        curl -fsSL https://ollama.ai/install.sh | sh
+        
+        # Pull the model
+        ollama pull hf.co/unsloth/gemma-3-270m-it-GGUF:Q8_0
+        
+        # Start Ollama server
+        ollama serve
+        \`\`\`
+        
+        ## Build Information
+        
+        - 📅 **Build Date**: $(date)
+        - 🔖 **Commit**: ${{ github.sha }}
+        - 🌿 **Branch**: ${{ github.ref_name }}
+        - 👤 **Deployed by**: ${{ github.actor }}
+        - 🏷️ **Version**: ${{ github.ref_name }}
+        
+        ## Support
+        
+        For issues and support, please visit: https://github.com/${{ github.repository }}/issues
+        EOF
+    
+    - name: 📤 Upload Deployment Guide
+      uses: actions/upload-artifact@v4
+      with:
+        name: deployment-guide
+        path: DEPLOYMENT.md
+        retention-days: 90
+
+  # 📢 Create Release
+  create-release:
+    name: 📢 Create Release
+    runs-on: ubuntu-latest
+    needs: [build-images, create-manifest]
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: 📥 Checkout Repository
+      uses: actions/checkout@v4
+    
+    - name: 📤 Download Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: ./artifacts
+    
+    - name: 🎉 Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          ./artifacts/docker-compose-production/docker-compose.prod.yml
+          ./artifacts/deployment-guide/DEPLOYMENT.md
+        body: |
+          # 🎓 Instructify Release ${{ github.ref_name }}
+          
+          ## 🚀 What's New
+          
+          This release includes the latest features and improvements to the Instructify EdTech platform.
+          
+          ## 🐳 Docker Images
+          
+          - **Backend**: `${{ needs.build-images.outputs.backend-image }}`
+          - **Frontend**: `${{ needs.build-images.outputs.frontend-image }}`
+          
+          ## 📦 Quick Deployment
+          
+          ```bash
+          # Download and start the application
+          curl -L -o docker-compose.prod.yml https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/docker-compose.prod.yml
+          docker-compose -f docker-compose.prod.yml up -d
+          ```
+          
+          ## 🎯 Features
+          
+          - ✅ AI-powered chat assistance with Gemma 3 270M
+          - ✅ Real-time video streaming with WebRTC
+          - ✅ Smart doubt classification system
+          - ✅ Live transcription and notes generation
+          - ✅ Modern Next.js 15 frontend with TypeScript
+          - ✅ FastAPI backend with WebSocket support
+          
+          ## 🔧 Requirements
+          
+          - Docker & Docker Compose
+          - Ollama with Gemma 3 270M model
+          - 4GB+ RAM recommended
+          
+          Full deployment guide included in the assets below! 📋
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
