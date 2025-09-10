@@ -36,8 +36,6 @@ class ChatHandler:
             await self.handle_webrtc_signal(class_id, websocket, message_data)
         elif message_type == "whiteboard_draw":
             await self.handle_whiteboard_draw(class_id, websocket, message_data)
-        elif message_type == "test_message":
-            print(f"🧪 Test message received: {message_data.get('data')}")
         else:
             print(f"❓ Unknown message type: {message_type}")
 

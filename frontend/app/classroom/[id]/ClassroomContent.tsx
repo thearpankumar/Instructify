@@ -70,7 +70,14 @@ export default function ClassroomContent({ classId }: { classId: string }) {
   const [whiteboardVisible, setWhiteboardVisible] = useState(false);
   
   // Whiteboard drawing function - always available
-  const applyWhiteboardUpdate = useCallback((data: any) => {
+  const applyWhiteboardUpdate = useCallback((data: {
+    action?: string;
+    x?: number;
+    y?: number;
+    tool?: string;
+    size?: number;
+    color?: string;
+  }) => {
     const canvas = document.querySelector('canvas');
     if (!canvas) {
       console.log('❌ No canvas found for whiteboard update');
@@ -93,22 +100,22 @@ export default function ClassroomContent({ classId }: { classId: string }) {
       ctx.strokeStyle = data.color || '#ffffff';
     }
 
-    ctx.lineWidth = data.size;
-    ctx.lineTo(data.x, data.y);
+    ctx.lineWidth = data.size || 3;
+    ctx.lineTo(data.x || 0, data.y || 0);
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(data.x, data.y);
+    ctx.moveTo(data.x || 0, data.y || 0);
     
     console.log('✅ Applied whiteboard drawing:', data);
   }, []);
 
   // Register whiteboard function globally
   useEffect(() => {
-    (window as any).applyWhiteboardUpdate = applyWhiteboardUpdate;
+    (window as unknown as Record<string, unknown>).applyWhiteboardUpdate = applyWhiteboardUpdate;
     console.log('✅ Whiteboard function registered at parent level');
     
     return () => {
-      (window as any).applyWhiteboardUpdate = null;
+      (window as unknown as Record<string, unknown>).applyWhiteboardUpdate = null;
     };
   }, [applyWhiteboardUpdate]);
   
@@ -214,8 +221,8 @@ export default function ClassroomContent({ classId }: { classId: string }) {
           case 'whiteboard_update':
             // Apply whiteboard drawing update
             console.log('📝 Student received whiteboard update:', data.drawing_data);
-            if ((window as any).applyWhiteboardUpdate) {
-              (window as any).applyWhiteboardUpdate(data.drawing_data);
+            if ((window as unknown as Record<string, unknown>).applyWhiteboardUpdate) {
+              ((window as unknown as Record<string, unknown>).applyWhiteboardUpdate as (data: unknown) => void)(data.drawing_data);
               console.log('✅ Applied whiteboard update to canvas');
             } else {
               console.log('❌ applyWhiteboardUpdate function not available');
@@ -245,8 +252,12 @@ export default function ClassroomContent({ classId }: { classId: string }) {
       if (studentPeerConnectionRef.current) {
         studentPeerConnectionRef.current.close();
       }
-      peerConnectionsRef.current.forEach(pc => pc.close());
-      peerConnectionsRef.current.clear();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      const connections = peerConnectionsRef.current;
+      // Copy to variable to avoid ref changes during cleanup
+      const connectionsToClose = Array.from(connections.values());
+      connectionsToClose.forEach(pc => pc.close());
+      connections.clear();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classId, role, userName]);
@@ -260,24 +271,12 @@ export default function ClassroomContent({ classId }: { classId: string }) {
   const setupStudentPeerConnection = useCallback(() => {
     const configuration: RTCConfiguration = {
       iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' }
-      ],
-      iceCandidatePoolSize: 10,
-      bundlePolicy: 'max-bundle',
-      rtcpMuxPolicy: 'require'
+        { urls: 'stun:stun.l.google.com:19302' }
+      ]
     };
 
     const peerConnection = new RTCPeerConnection(configuration);
     studentPeerConnectionRef.current = peerConnection;
-
-    // Optimize for Chrome
-    peerConnection.addEventListener('connectionstatechange', () => {
-      if (peerConnection.connectionState === 'failed') {
-        peerConnection.restartIce();
-      }
-    });
 
     // Handle incoming stream from teacher
     peerConnection.ontrack = (event) => {
@@ -331,37 +330,16 @@ export default function ClassroomContent({ classId }: { classId: string }) {
   const setupTeacherPeerConnection = useCallback((studentId: number) => {
     const configuration: RTCConfiguration = {
       iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' }
-      ],
-      iceCandidatePoolSize: 10,
-      bundlePolicy: 'max-bundle',
-      rtcpMuxPolicy: 'require'
+        { urls: 'stun:stun.l.google.com:19302' }
+      ]
     };
 
     const peerConnection = new RTCPeerConnection(configuration);
     
-    // Optimize for Chrome
-    peerConnection.addEventListener('connectionstatechange', () => {
-      if (peerConnection.connectionState === 'failed') {
-        peerConnection.restartIce();
-      }
-    });
-    
-    // Add current stream to this peer connection with optimized settings
+    // Add current stream to this peer connection
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => {
-        const sender = peerConnection.addTrack(track, streamRef.current!);
-        // Optimize encoding for better performance
-        if (track.kind === 'video') {
-          const params = sender.getParameters();
-          if (params.encodings && params.encodings.length > 0) {
-            params.encodings[0].maxBitrate = 1000000; // 1Mbps
-            params.encodings[0].maxFramerate = 30;
-            sender.setParameters(params);
-          }
-        }
+        peerConnection.addTrack(track, streamRef.current!);
       });
     }
 
@@ -540,32 +518,23 @@ export default function ClassroomContent({ classId }: { classId: string }) {
         console.log('📺 Starting screen share...');
         // Screen sharing with Chrome compatibility
         stream = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            mediaSource: 'screen',
-            width: { max: 1920 },
-            height: { max: 1080 },
-            frameRate: { max: 30 }
-          },
+          video: true,
           audio: false
         });
         setMediaState(prev => ({ ...prev, isScreenSharing: true }));
       } else {
         console.log('📹 Starting camera stream...');
-        // Regular camera/microphone with optimized constraints
+        // Regular camera/microphone with simple constraints
         const constraints: MediaStreamConstraints = {};
         if (mediaState.hasVideo && mediaState.videoEnabled) {
           constraints.video = {
-            width: { ideal: 1280, max: 1920 },
-            height: { ideal: 720, max: 1080 },
-            frameRate: { ideal: 30, max: 30 }
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            frameRate: { ideal: 15 }
           };
         }
         if (mediaState.hasAudio && mediaState.audioEnabled) {
-          constraints.audio = {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          };
+          constraints.audio = true;
         }
         
         console.log('📋 Media constraints:', constraints);
@@ -602,9 +571,9 @@ export default function ClassroomContent({ classId }: { classId: string }) {
     } catch (error) {
       console.error('❌ Error accessing media:', error);
       console.error('Error details:', {
-        name: error.name,
-        message: error.message,
-        constraint: error.constraint
+        name: (error as Error).name,
+        message: (error as Error).message,
+        constraint: (error as unknown as { constraint?: string }).constraint
       });
       
       // Fallback to screen sharing if camera fails
@@ -670,12 +639,45 @@ export default function ClassroomContent({ classId }: { classId: string }) {
     }
   }, [mediaState.videoEnabled]);
 
-  const startScreenShare = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+  const startScreenShare = useCallback(async () => {
+    try {
+      console.log('🖥️ Starting screen share...');
+      
+      // Stop current stream
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+
+      // Get screen share with minimal constraints
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false
+      });
+
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setMediaState(prev => ({ ...prev, isScreenSharing: true }));
+
+      // Handle stream end
+      stream.getVideoTracks()[0].onended = () => {
+        setMediaState(prev => ({ ...prev, isScreenSharing: false }));
+      };
+
+      // Restart WebRTC connections with new stream
+      if (role === 'teacher') {
+        // Clear existing connections
+        peerConnectionsRef.current.clear();
+        
+        // Students will reconnect automatically
+        console.log('🔄 Screen share ready - students will reconnect');
+      }
+
+    } catch (error) {
+      console.error('❌ Screen sharing failed:', error);
     }
-    startMediaStream(true);
-  }, [startMediaStream]);
+  }, [role]);
 
   const stopStreaming = useCallback(() => {
     if (streamRef.current) {
@@ -719,16 +721,16 @@ export default function ClassroomContent({ classId }: { classId: string }) {
   }, []);
 
   // Handle whiteboard drawing updates
-  const handleWhiteboardUpdate = useCallback((drawingData: any) => {
+  const handleWhiteboardUpdate = useCallback((drawingData: {
+    x: number;
+    y: number;
+    tool: string;
+    size: number;
+    color: string;
+    timestamp: number;
+  }) => {
     console.log('📝 Sending whiteboard update:', drawingData);
     if (wsRef.current && role === 'teacher') {
-      // Send test message first
-      wsRef.current.send(JSON.stringify({
-        type: 'test_message',
-        data: 'Testing WebSocket connection'
-      }));
-      
-      // Then send whiteboard data
       wsRef.current.send(JSON.stringify({
         type: 'whiteboard_draw',
         drawing_data: drawingData

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 
 interface VoiceTranscriptionProps {
   classId: string;
@@ -18,6 +18,18 @@ export default function VoiceTranscription({ classId, isTeacher, onCaptionUpdate
   const [isGeneratingNotes, setIsGeneratingNotes] = useState(false);
   const [currentInterim, setCurrentInterim] = useState('');
 
+  const sendTranscriptChunk = useCallback(async (text: string) => {
+    try {
+      await fetch(`http://localhost:8000/api/transcription/${classId}/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, timestamp: new Date().toISOString() }),
+      });
+    } catch (error) {
+      console.error('Error sending transcript:', error);
+    }
+  }, [classId]);
+
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     setIsSupported(!!SpeechRecognition);
@@ -29,59 +41,46 @@ export default function VoiceTranscription({ classId, isTeacher, onCaptionUpdate
       recognition.lang = 'en-US';
 
       recognition.onresult = (event) => {
-        let finalTranscript = '';
         let interimTranscript = '';
+        let finalTranscript = '';
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcriptText = event.results[i][0].transcript;
+          const transcript = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
-            finalTranscript += transcriptText + ' ';
+            finalTranscript += transcript;
           } else {
-            interimTranscript += transcriptText;
+            interimTranscript += transcript;
           }
         }
 
         if (finalTranscript) {
-          sendTranscriptChunk(finalTranscript.trim());
-          setTranscript(prev => prev + finalTranscript);
+          setTranscript(prev => prev + finalTranscript + ' ');
+          sendTranscriptChunk(finalTranscript);
+          if (onCaptionUpdate) onCaptionUpdate(finalTranscript, '', true);
         }
 
-        setCurrentInterim(interimTranscript);
-
-        // Send caption updates
-        if (onCaptionUpdate && captionsEnabled && isRecording) {
-          onCaptionUpdate(interimTranscript, transcript + finalTranscript, true);
+        if (interimTranscript) {
+          setCurrentInterim(interimTranscript);
+          if (onCaptionUpdate) onCaptionUpdate('', interimTranscript, false);
         }
       };
 
-      recognition.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
+      recognition.onerror = () => {
+        console.error('Speech recognition error');
         setIsRecording(false);
         setCurrentInterim('');
         if (onCaptionUpdate) onCaptionUpdate('', '', false);
       };
 
       recognition.onend = () => {
-        setIsRecording(false);
-        setCurrentInterim('');
-        if (onCaptionUpdate) onCaptionUpdate('', '', false);
+        if (isRecording && captionsEnabled) {
+          recognition.start();
+        }
       };
 
       recognitionRef.current = recognition;
     }
-  }, []);
-
-  const sendTranscriptChunk = async (text: string) => {
-    try {
-      await fetch(`http://localhost:8000/api/transcription/${classId}/add`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, timestamp: new Date().toISOString() }),
-      });
-    } catch (error) {
-      console.error('Error sending transcript:', error);
-    }
-  };
+  }, [onCaptionUpdate, captionsEnabled, isRecording, transcript, sendTranscriptChunk]);
 
   const startRecording = async () => {
     try {
@@ -116,7 +115,7 @@ export default function VoiceTranscription({ classId, isTeacher, onCaptionUpdate
       } else {
         alert('Failed to generate notes.');
       }
-    } catch (error) {
+    } catch {
       alert('Error generating notes');
     } finally {
       setIsGeneratingNotes(false);
@@ -201,7 +200,7 @@ export default function VoiceTranscription({ classId, isTeacher, onCaptionUpdate
 
           {currentInterim && captionsEnabled && (
             <div className="bg-blue-50 rounded p-2 mb-2 text-xs text-blue-700">
-              Live: "{currentInterim}"
+              Live: &ldquo;{currentInterim}&rdquo;
             </div>
           )}
         </div>

@@ -5,15 +5,15 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 interface WhiteboardProps {
   isVisible: boolean;
   isTeacher: boolean;
-  onDrawingUpdate?: (drawingData: any) => void;
-}
-
-interface DrawPoint {
-  x: number;
-  y: number;
-  type: 'pen' | 'eraser';
-  size: number;
-  color?: string;
+  onDrawingUpdate?: (drawingData: {
+    x: number;
+    y: number;
+    tool: string;
+    size: number;
+    color: string;
+    timestamp: number;
+    action?: string;
+  }) => void;
 }
 
 export default function Whiteboard({ isVisible, isTeacher, onDrawingUpdate }: WhiteboardProps) {
@@ -25,6 +25,66 @@ export default function Whiteboard({ isVisible, isTeacher, onDrawingUpdate }: Wh
   const [eraserSize, setEraserSize] = useState(10);
   const [penColor, setPenColor] = useState('#ffffff');
   const [handDetection, setHandDetection] = useState(false);
+
+  const drawPoint = useCallback((x: number, y: number, tool: 'pen' | 'eraser', size: number, color?: string) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (tool === 'eraser') {
+      ctx.globalCompositeOperation = 'destination-out';
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = color || penColor;
+    }
+
+    ctx.lineWidth = size;
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+
+    // Send drawing data to other users
+    if (onDrawingUpdate && isTeacher) {
+      onDrawingUpdate({ x, y, tool, size, color: color || penColor, timestamp: Date.now() });
+    }
+  }, [onDrawingUpdate, isTeacher, penColor]);
+
+  const onHandResults = useCallback((results: {
+    multiHandLandmarks?: Array<Array<{ x: number; y: number }>>;
+  }) => {
+    if (!results.multiHandLandmarks || !results.multiHandLandmarks[0]) return;
+
+    const landmarks = results.multiHandLandmarks[0];
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Get finger positions
+    const indexTip = landmarks[8];  // Index finger tip
+    const middleTip = landmarks[12]; // Middle finger tip
+    const indexPip = landmarks[6];   // Index finger PIP joint
+    const middlePip = landmarks[10]; // Middle finger PIP joint
+
+    // Check if fingers are extended
+    const indexExtended = indexTip.y < indexPip.y;
+    const middleExtended = middleTip.y < middlePip.y;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = indexTip.x * rect.width;
+    const y = indexTip.y * rect.height;
+
+    if (indexExtended && !middleExtended) {
+      // One finger = pen
+      setCurrentTool('pen');
+      drawPoint(x, y, 'pen', penSize, penColor);
+    } else if (indexExtended && middleExtended) {
+      // Two fingers = eraser
+      setCurrentTool('eraser');
+      drawPoint(x, y, 'eraser', eraserSize);
+    }
+  }, [penSize, drawPoint, eraserSize, penColor]);
 
   // Initialize canvas
   useEffect(() => {
@@ -56,41 +116,42 @@ export default function Whiteboard({ isVisible, isTeacher, onDrawingUpdate }: Wh
   useEffect(() => {
     if (!handDetection || !isTeacher) return;
 
-    let hands: any;
-    let camera: any;
+    let hands: unknown;
+    let camera: unknown;
 
     const initHandDetection = async () => {
       try {
-        // Dynamically import MediaPipe (if available)
         const { Hands } = await import('@mediapipe/hands');
         const { Camera } = await import('@mediapipe/camera_utils');
 
         hands = new Hands({
           locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-        });
+        }) as unknown;
 
-        hands.setOptions({
+        (hands as { setOptions: (options: Record<string, unknown>) => void }).setOptions({
           maxNumHands: 1,
           modelComplexity: 1,
           minDetectionConfidence: 0.5,
           minTrackingConfidence: 0.5
         });
 
-        hands.onResults(onHandResults);
+        (hands as { onResults: (callback: (results: unknown) => void) => void }).onResults((results: unknown) => {
+          onHandResults(results as { multiHandLandmarks?: Array<Array<{ x: number; y: number }>> });
+        });
 
         if (videoRef.current) {
           camera = new Camera(videoRef.current, {
             onFrame: async () => {
-              if (videoRef.current) {
-                await hands.send({ image: videoRef.current });
+              if (videoRef.current && hands) {
+                await (hands as { send: (data: { image: HTMLVideoElement }) => Promise<void> }).send({ image: videoRef.current });
               }
             },
             width: 640,
             height: 480
-          });
-          camera.start();
+          }) as unknown;
+          (camera as { start: () => void }).start();
         }
-      } catch (error) {
+      } catch {
         console.log('MediaPipe not available, using mouse only');
       }
     };
@@ -98,67 +159,9 @@ export default function Whiteboard({ isVisible, isTeacher, onDrawingUpdate }: Wh
     initHandDetection();
 
     return () => {
-      if (camera) camera.stop();
+      if (camera) (camera as { stop: () => void }).stop();
     };
-  }, [handDetection, isTeacher]);
-
-  const onHandResults = useCallback((results: any) => {
-    if (!results.multiHandLandmarks || !results.multiHandLandmarks[0]) return;
-
-    const landmarks = results.multiHandLandmarks[0];
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    // Get finger positions
-    const indexTip = landmarks[8];  // Index finger tip
-    const middleTip = landmarks[12]; // Middle finger tip
-    const indexPip = landmarks[6];   // Index finger PIP joint
-    const middlePip = landmarks[10]; // Middle finger PIP joint
-
-    // Check if fingers are extended
-    const indexExtended = indexTip.y < indexPip.y;
-    const middleExtended = middleTip.y < middlePip.y;
-
-    const rect = canvas.getBoundingClientRect();
-    const x = indexTip.x * rect.width;
-    const y = indexTip.y * rect.height;
-
-    if (indexExtended && !middleExtended) {
-      // One finger = pen
-      setCurrentTool('pen');
-      drawPoint(x, y, 'pen', penSize, penColor);
-    } else if (indexExtended && middleExtended) {
-      // Two fingers = eraser
-      setCurrentTool('eraser');
-      drawPoint(x, y, 'eraser', eraserSize);
-    }
-  }, [penSize]);
-
-  const drawPoint = useCallback((x: number, y: number, tool: 'pen' | 'eraser', size: number, color?: string) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    if (tool === 'eraser') {
-      ctx.globalCompositeOperation = 'destination-out';
-    } else {
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.strokeStyle = color || penColor;
-    }
-
-    ctx.lineWidth = size;
-    ctx.lineTo(x, y);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-
-    // Send drawing data to other users
-    if (onDrawingUpdate && isTeacher) {
-      onDrawingUpdate({ x, y, tool, size, color: color || penColor, timestamp: Date.now() });
-    }
-  }, [onDrawingUpdate, isTeacher, penColor]);
+  }, [handDetection, isTeacher, onHandResults]);
 
   // Mouse drawing handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -209,7 +212,15 @@ export default function Whiteboard({ isVisible, isTeacher, onDrawingUpdate }: Wh
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     if (onDrawingUpdate && isTeacher) {
-      onDrawingUpdate({ action: 'clear', timestamp: Date.now() });
+      onDrawingUpdate({ 
+        action: 'clear', 
+        x: 0, 
+        y: 0, 
+        tool: 'clear', 
+        size: 0, 
+        color: '', 
+        timestamp: Date.now() 
+      });
     }
   }, [onDrawingUpdate, isTeacher]);
 
@@ -340,29 +351,9 @@ export default function Whiteboard({ isVisible, isTeacher, onDrawingUpdate }: Wh
 
           <button
             onClick={clearCanvas}
-            className="w-full px-3 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors mb-2"
+            className="w-full px-3 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
           >
             🗑️ Clear Whiteboard
-          </button>
-
-          {/* Test button for debugging */}
-          <button
-            onClick={() => {
-              console.log('🧪 Testing whiteboard update');
-              if (onDrawingUpdate) {
-                onDrawingUpdate({ 
-                  x: 100, 
-                  y: 100, 
-                  tool: 'pen', 
-                  size: 5, 
-                  color: '#ff0000',
-                  timestamp: Date.now() 
-                });
-              }
-            }}
-            className="w-full px-3 py-2 bg-yellow-600 text-white rounded-lg text-sm font-medium hover:bg-yellow-700 transition-colors"
-          >
-            🧪 Test Update
           </button>
         </div>
       )}
