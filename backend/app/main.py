@@ -156,4 +156,6 @@ async def websocket_endpoint(websocket: WebSocket, class_id: str):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Binding to 0.0.0.0 is intentional for containerized deployments
+    # In production, this should be behind a reverse proxy or firewall
+    uvicorn.run(app, host="0.0.0.0", port=8000)  # nosec B104
