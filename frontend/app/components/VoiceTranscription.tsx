@@ -5,18 +5,20 @@ import { useState, useRef, useEffect } from 'react';
 interface VoiceTranscriptionProps {
   classId: string;
   isTeacher: boolean;
+  onCaptionUpdate?: (currentText: string, finalText: string, isActive: boolean) => void;
 }
 
-export default function VoiceTranscription({ classId, isTeacher }: VoiceTranscriptionProps) {
+export default function VoiceTranscription({ classId, isTeacher, onCaptionUpdate }: VoiceTranscriptionProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [isSupported, setIsSupported] = useState(false);
+  const [captionsEnabled, setCaptionsEnabled] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const [notes, setNotes] = useState<string | null>(null);
   const [isGeneratingNotes, setIsGeneratingNotes] = useState(false);
+  const [currentInterim, setCurrentInterim] = useState('');
 
   useEffect(() => {
-    // Check if browser supports Speech Recognition
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     setIsSupported(!!SpeechRecognition);
 
@@ -28,28 +30,41 @@ export default function VoiceTranscription({ classId, isTeacher }: VoiceTranscri
 
       recognition.onresult = (event) => {
         let finalTranscript = '';
+        let interimTranscript = '';
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
+          const transcriptText = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
-            finalTranscript += transcript + ' ';
+            finalTranscript += transcriptText + ' ';
+          } else {
+            interimTranscript += transcriptText;
           }
         }
 
         if (finalTranscript) {
-          // Send to backend
           sendTranscriptChunk(finalTranscript.trim());
           setTranscript(prev => prev + finalTranscript);
+        }
+
+        setCurrentInterim(interimTranscript);
+
+        // Send caption updates
+        if (onCaptionUpdate && captionsEnabled && isRecording) {
+          onCaptionUpdate(interimTranscript, transcript + finalTranscript, true);
         }
       };
 
       recognition.onerror = (event) => {
         console.error('Speech recognition error:', event.error);
         setIsRecording(false);
+        setCurrentInterim('');
+        if (onCaptionUpdate) onCaptionUpdate('', '', false);
       };
 
       recognition.onend = () => {
         setIsRecording(false);
+        setCurrentInterim('');
+        if (onCaptionUpdate) onCaptionUpdate('', '', false);
       };
 
       recognitionRef.current = recognition;
@@ -60,23 +75,23 @@ export default function VoiceTranscription({ classId, isTeacher }: VoiceTranscri
     try {
       await fetch(`http://localhost:8000/api/transcription/${classId}/add`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text,
-          timestamp: new Date().toISOString(),
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, timestamp: new Date().toISOString() }),
       });
     } catch (error) {
       console.error('Error sending transcript:', error);
     }
   };
 
-  const startRecording = () => {
-    if (recognitionRef.current && !isRecording) {
-      recognitionRef.current.start();
-      setIsRecording(true);
+  const startRecording = async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (recognitionRef.current && !isRecording) {
+        recognitionRef.current.start();
+        setIsRecording(true);
+      }
+    } catch (error) {
+      console.error('Microphone permission denied:', error);
     }
   };
 
@@ -92,20 +107,16 @@ export default function VoiceTranscription({ classId, isTeacher }: VoiceTranscri
     try {
       const response = await fetch('http://localhost:8000/api/notes/generate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ class_id: classId }),
       });
-
       if (response.ok) {
         const data = await response.json();
         setNotes(data.notes);
       } else {
-        alert('Failed to generate notes. Make sure there is recorded content.');
+        alert('Failed to generate notes.');
       }
     } catch (error) {
-      console.error('Error generating notes:', error);
       alert('Error generating notes');
     } finally {
       setIsGeneratingNotes(false);
@@ -134,9 +145,7 @@ export default function VoiceTranscription({ classId, isTeacher }: VoiceTranscri
   if (!isSupported) {
     return (
       <div className="p-3 bg-yellow-50 border-b">
-        <p className="text-xs text-yellow-800">
-          Voice transcription requires Chrome/Edge browser
-        </p>
+        <p className="text-xs text-yellow-800">Voice features require Chrome/Edge</p>
       </div>
     );
   }
@@ -144,7 +153,7 @@ export default function VoiceTranscription({ classId, isTeacher }: VoiceTranscri
   return (
     <div className="p-3 bg-gray-50">
       <h4 className="text-sm font-semibold mb-3 text-gray-900">
-        {isTeacher ? '🎤 Voice Notes' : '📝 Class Notes'}
+        {isTeacher ? '🎤 Voice & Captions' : '📝 Class Notes'}
       </h4>
 
       {isTeacher && (
@@ -154,9 +163,7 @@ export default function VoiceTranscription({ classId, isTeacher }: VoiceTranscri
               onClick={startRecording}
               disabled={isRecording}
               className={`flex-1 px-2 py-1 rounded text-xs font-medium ${
-                isRecording
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-green-500 text-white hover:bg-green-600'
+                isRecording ? 'bg-gray-300 text-gray-500' : 'bg-green-500 text-white hover:bg-green-600'
               }`}
             >
               {isRecording ? '🔴 Recording' : '🎤 Record'}
@@ -166,18 +173,35 @@ export default function VoiceTranscription({ classId, isTeacher }: VoiceTranscri
               onClick={stopRecording}
               disabled={!isRecording}
               className={`flex-1 px-2 py-1 rounded text-xs font-medium ${
-                !isRecording
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-red-500 text-white hover:bg-red-600'
+                !isRecording ? 'bg-gray-300 text-gray-500' : 'bg-red-500 text-white hover:bg-red-600'
               }`}
             >
               ⏹️ Stop
             </button>
           </div>
 
-          {transcript && (
-            <div className="bg-white rounded p-2 mb-2 text-xs text-gray-700 max-h-16 overflow-y-auto">
-              {transcript.slice(-100)}...
+          <div className="mb-2">
+            <label className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                checked={captionsEnabled}
+                onChange={(e) => setCaptionsEnabled(e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-xs text-gray-700">📺 Live Captions</span>
+            </label>
+          </div>
+
+          {isRecording && (
+            <div className="bg-green-50 rounded p-2 mb-2 text-xs text-green-700">
+              🎤 Listening...
+              {captionsEnabled && <span className="ml-2">📺 ON</span>}
+            </div>
+          )}
+
+          {currentInterim && captionsEnabled && (
+            <div className="bg-blue-50 rounded p-2 mb-2 text-xs text-blue-700">
+              Live: "{currentInterim}"
             </div>
           )}
         </div>
@@ -188,9 +212,7 @@ export default function VoiceTranscription({ classId, isTeacher }: VoiceTranscri
           onClick={generateNotes}
           disabled={isGeneratingNotes}
           className={`w-full px-3 py-2 rounded text-xs font-medium ${
-            isGeneratingNotes
-              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              : 'bg-blue-500 text-white hover:bg-blue-600'
+            isGeneratingNotes ? 'bg-gray-300 text-gray-500' : 'bg-blue-500 text-white hover:bg-blue-600'
           }`}
         >
           {isGeneratingNotes ? '⏳ Generating...' : '🤖 Generate Notes'}

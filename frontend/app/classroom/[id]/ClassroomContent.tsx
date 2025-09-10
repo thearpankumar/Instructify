@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import VoiceTranscription from '../../components/VoiceTranscription';
+import LiveCaptions from '../../components/LiveCaptions';
 
 interface Message {
   id: string;
@@ -57,6 +58,13 @@ export default function ClassroomContent({ classId }: { classId: string }) {
     canShareScreen: false
   });
   
+  // Live captions state
+  const [captionState, setCaptionState] = useState({
+    currentText: '',
+    finalText: '',
+    isActive: false
+  });
+  
   const wsRef = useRef<WebSocket | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -71,6 +79,12 @@ export default function ClassroomContent({ classId }: { classId: string }) {
   // Check media device capabilities
   const checkMediaCapabilities = useCallback(async () => {
     try {
+      // Check browser compatibility
+      const isChrome = /Chrome/.test(navigator.userAgent) && /Google Inc/.test(navigator.vendor);
+      const isFirefox = navigator.userAgent.toLowerCase().indexOf('firefox') > -1;
+      
+      console.log('Browser detection:', { isChrome, isFirefox, userAgent: navigator.userAgent });
+      
       const devices = await navigator.mediaDevices.enumerateDevices();
       const hasAudio = devices.some(device => device.kind === 'audioinput');
       const hasVideo = devices.some(device => device.kind === 'videoinput');
@@ -190,12 +204,23 @@ export default function ClassroomContent({ classId }: { classId: string }) {
     const configuration: RTCConfiguration = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-      ]
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' }
+      ],
+      iceCandidatePoolSize: 10,
+      bundlePolicy: 'max-bundle',
+      rtcpMuxPolicy: 'require'
     };
 
     const peerConnection = new RTCPeerConnection(configuration);
     studentPeerConnectionRef.current = peerConnection;
+
+    // Optimize for Chrome
+    peerConnection.addEventListener('connectionstatechange', () => {
+      if (peerConnection.connectionState === 'failed') {
+        peerConnection.restartIce();
+      }
+    });
 
     // Handle incoming stream from teacher
     peerConnection.ontrack = (event) => {
@@ -250,16 +275,36 @@ export default function ClassroomContent({ classId }: { classId: string }) {
     const configuration: RTCConfiguration = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-      ]
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' }
+      ],
+      iceCandidatePoolSize: 10,
+      bundlePolicy: 'max-bundle',
+      rtcpMuxPolicy: 'require'
     };
 
     const peerConnection = new RTCPeerConnection(configuration);
     
-    // Add current stream to this peer connection
+    // Optimize for Chrome
+    peerConnection.addEventListener('connectionstatechange', () => {
+      if (peerConnection.connectionState === 'failed') {
+        peerConnection.restartIce();
+      }
+    });
+    
+    // Add current stream to this peer connection with optimized settings
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => {
-        peerConnection.addTrack(track, streamRef.current!);
+        const sender = peerConnection.addTrack(track, streamRef.current!);
+        // Optimize encoding for better performance
+        if (track.kind === 'video') {
+          const params = sender.getParameters();
+          if (params.encodings && params.encodings.length > 0) {
+            params.encodings[0].maxBitrate = 1000000; // 1Mbps
+            params.encodings[0].maxFramerate = 30;
+            sender.setParameters(params);
+          }
+        }
       });
     }
 
@@ -302,15 +347,19 @@ export default function ClassroomContent({ classId }: { classId: string }) {
           // Student is ready to receive stream, teacher creates offer
           if (role === 'teacher' && data.sender_id && streamRef.current) {
             console.log(`👨‍🏫 Teacher creating offer for student ${data.sender_id}`);
+            console.log('📊 Current stream tracks:', streamRef.current.getTracks().map(t => `${t.kind}: ${t.readyState}`));
             
             // Create new peer connection for this student
             const peerConnection = setupTeacherPeerConnection(data.sender_id);
             
             try {
-              const offer = await peerConnection.createOffer();
+              const offer = await peerConnection.createOffer({
+                offerToReceiveAudio: false,
+                offerToReceiveVideo: false
+              });
               await peerConnection.setLocalDescription(offer);
               
-              console.log(`📤 Sending offer to student ${data.sender_id}`);
+              console.log(`📤 Sending offer to student ${data.sender_id}`, offer.type);
               wsRef.current?.send(JSON.stringify({
                 type: 'webrtc_signal',
                 signal_type: 'offer',
@@ -426,9 +475,12 @@ export default function ClassroomContent({ classId }: { classId: string }) {
   // Start media stream for teacher
   const startMediaStream = useCallback(async (useScreen: boolean = false) => {
     try {
+      console.log('🎥 Starting media stream...', { useScreen, browser: navigator.userAgent });
+      
       let stream: MediaStream;
       
       if (useScreen && mediaState.canShareScreen) {
+        console.log('📺 Starting screen share...');
         // Screen sharing
         stream = await navigator.mediaDevices.getDisplayMedia({
           video: true,
@@ -436,31 +488,45 @@ export default function ClassroomContent({ classId }: { classId: string }) {
         });
         setMediaState(prev => ({ ...prev, isScreenSharing: true }));
       } else {
-        // Regular camera/microphone
+        console.log('📹 Starting camera stream...');
+        // Regular camera/microphone with optimized constraints
         const constraints: MediaStreamConstraints = {};
         if (mediaState.hasVideo && mediaState.videoEnabled) {
-          constraints.video = true;
+          constraints.video = {
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
+            frameRate: { ideal: 30, max: 30 }
+          };
         }
         if (mediaState.hasAudio && mediaState.audioEnabled) {
-          constraints.audio = true;
+          constraints.audio = {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          };
         }
+        
+        console.log('📋 Media constraints:', constraints);
         
         if (!constraints.video && !constraints.audio) {
           throw new Error('No media devices available');
         }
         
         stream = await navigator.mediaDevices.getUserMedia(constraints);
+        console.log('✅ Got media stream:', stream.getTracks().map(t => `${t.kind}: ${t.label}`));
         setMediaState(prev => ({ ...prev, isScreenSharing: false }));
       }
       
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        console.log('✅ Set video source for teacher');
       }
 
       // Handle stream end (for screen sharing)
       stream.getVideoTracks().forEach(track => {
         track.onended = () => {
+          console.log('📺 Screen sharing ended');
           setMediaState(prev => ({ ...prev, isScreenSharing: false }));
         };
       });
@@ -472,14 +538,20 @@ export default function ClassroomContent({ classId }: { classId: string }) {
       }
 
     } catch (error) {
-      console.error('Error accessing media:', error);
+      console.error('❌ Error accessing media:', error);
+      console.error('Error details:', {
+        name: error.name,
+        message: error.message,
+        constraint: error.constraint
+      });
       
       // Fallback to screen sharing if camera fails
       if (!useScreen && mediaState.canShareScreen) {
+        console.log('🔄 Trying screen share as fallback...');
         try {
           await startMediaStream(true);
         } catch (screenError) {
-          console.error('Screen sharing also failed:', screenError);
+          console.error('❌ Screen sharing also failed:', screenError);
         }
       }
     }
@@ -579,6 +651,11 @@ export default function ClassroomContent({ classId }: { classId: string }) {
     }
   };
 
+  // Handle live caption updates
+  const handleCaptionUpdate = useCallback((currentText: string, finalText: string, isActive: boolean) => {
+    setCaptionState({ currentText, finalText, isActive });
+  }, []);
+
   if (!isConnected) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
@@ -671,6 +748,13 @@ export default function ClassroomContent({ classId }: { classId: string }) {
                 </div>
               </>
             )}
+            
+            {/* Live Captions Overlay */}
+            <LiveCaptions 
+              isVisible={captionState.isActive}
+              currentText={captionState.currentText}
+              finalText={captionState.finalText}
+            />
           </div>
 
           {/* Professional Media Controls for Teacher */}
@@ -824,7 +908,11 @@ export default function ClassroomContent({ classId }: { classId: string }) {
         <div className="w-96 bg-white border-l flex flex-col">
           {/* Voice Transcription Section */}
           <div className="border-b">
-            <VoiceTranscription classId={classId} isTeacher={role === 'teacher'} />
+            <VoiceTranscription 
+              classId={classId} 
+              isTeacher={role === 'teacher'} 
+              onCaptionUpdate={handleCaptionUpdate}
+            />
           </div>
 
           {/* Chat Header */}
