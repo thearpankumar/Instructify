@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import VoiceTranscription from '../../components/VoiceTranscription';
 import LiveCaptions from '../../components/LiveCaptions';
+import Whiteboard from '../../components/Whiteboard';
 
 interface Message {
   id: string;
@@ -64,6 +65,52 @@ export default function ClassroomContent({ classId }: { classId: string }) {
     finalText: '',
     isActive: false
   });
+
+  // Whiteboard state
+  const [whiteboardVisible, setWhiteboardVisible] = useState(false);
+  
+  // Whiteboard drawing function - always available
+  const applyWhiteboardUpdate = useCallback((data: any) => {
+    const canvas = document.querySelector('canvas');
+    if (!canvas) {
+      console.log('❌ No canvas found for whiteboard update');
+      return;
+    }
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (data.action === 'clear') {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      console.log('✅ Cleared whiteboard canvas');
+      return;
+    }
+
+    if (data.tool === 'eraser') {
+      ctx.globalCompositeOperation = 'destination-out';
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = data.color || '#ffffff';
+    }
+
+    ctx.lineWidth = data.size;
+    ctx.lineTo(data.x, data.y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(data.x, data.y);
+    
+    console.log('✅ Applied whiteboard drawing:', data);
+  }, []);
+
+  // Register whiteboard function globally
+  useEffect(() => {
+    (window as any).applyWhiteboardUpdate = applyWhiteboardUpdate;
+    console.log('✅ Whiteboard function registered at parent level');
+    
+    return () => {
+      (window as any).applyWhiteboardUpdate = null;
+    };
+  }, [applyWhiteboardUpdate]);
   
   const wsRef = useRef<WebSocket | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -163,6 +210,16 @@ export default function ClassroomContent({ classId }: { classId: string }) {
           case 'message_blocked':
             // Show warning to user that their message was blocked
             alert(`⚠️ Message Blocked: ${data.reason}`);
+            break;
+          case 'whiteboard_update':
+            // Apply whiteboard drawing update
+            console.log('📝 Student received whiteboard update:', data.drawing_data);
+            if ((window as any).applyWhiteboardUpdate) {
+              (window as any).applyWhiteboardUpdate(data.drawing_data);
+              console.log('✅ Applied whiteboard update to canvas');
+            } else {
+              console.log('❌ applyWhiteboardUpdate function not available');
+            }
             break;
         }
       };
@@ -481,10 +538,15 @@ export default function ClassroomContent({ classId }: { classId: string }) {
       
       if (useScreen && mediaState.canShareScreen) {
         console.log('📺 Starting screen share...');
-        // Screen sharing
+        // Screen sharing with Chrome compatibility
         stream = await navigator.mediaDevices.getDisplayMedia({
-          video: true,
-          audio: mediaState.hasAudio
+          video: {
+            mediaSource: 'screen',
+            width: { max: 1920 },
+            height: { max: 1080 },
+            frameRate: { max: 30 }
+          },
+          audio: false
         });
         setMediaState(prev => ({ ...prev, isScreenSharing: true }));
       } else {
@@ -656,6 +718,24 @@ export default function ClassroomContent({ classId }: { classId: string }) {
     setCaptionState({ currentText, finalText, isActive });
   }, []);
 
+  // Handle whiteboard drawing updates
+  const handleWhiteboardUpdate = useCallback((drawingData: any) => {
+    console.log('📝 Sending whiteboard update:', drawingData);
+    if (wsRef.current && role === 'teacher') {
+      // Send test message first
+      wsRef.current.send(JSON.stringify({
+        type: 'test_message',
+        data: 'Testing WebSocket connection'
+      }));
+      
+      // Then send whiteboard data
+      wsRef.current.send(JSON.stringify({
+        type: 'whiteboard_draw',
+        drawing_data: drawingData
+      }));
+    }
+  }, [role]);
+
   if (!isConnected) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
@@ -755,6 +835,13 @@ export default function ClassroomContent({ classId }: { classId: string }) {
               currentText={captionState.currentText}
               finalText={captionState.finalText}
             />
+
+            {/* Whiteboard Overlay */}
+            <Whiteboard
+              isVisible={whiteboardVisible}
+              isTeacher={role === 'teacher'}
+              onDrawingUpdate={handleWhiteboardUpdate}
+            />
           </div>
 
           {/* Professional Media Controls for Teacher */}
@@ -836,7 +923,7 @@ export default function ClassroomContent({ classId }: { classId: string }) {
                     </div>
                   </div>
 
-                  {/* Center Section - Screen Share */}
+                  {/* Center Section - Screen Share & Whiteboard */}
                   <div className="flex items-center space-x-3">
                     <div className="relative group">
                       <button
@@ -857,6 +944,26 @@ export default function ClassroomContent({ classId }: { classId: string }) {
                         <span>{mediaState.isScreenSharing ? 'Stop Sharing' : 'Share Screen'}</span>
                         {mediaState.isScreenSharing && (
                           <div className="w-2 h-2 bg-red-400 rounded-full animate-pulse"></div>
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="relative group">
+                      <button
+                        onClick={() => setWhiteboardVisible(!whiteboardVisible)}
+                        className={`px-6 py-3 rounded-lg transition-all duration-200 flex items-center space-x-2 font-medium ${
+                          whiteboardVisible
+                            ? 'bg-purple-500 hover:bg-purple-600 text-white shadow-lg shadow-purple-500/25'
+                            : 'bg-gray-700 hover:bg-gray-600 text-white shadow-lg'
+                        }`}
+                        title={whiteboardVisible ? 'Hide whiteboard' : 'Show whiteboard'}
+                      >
+                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
+                        </svg>
+                        <span>🎨 Whiteboard</span>
+                        {whiteboardVisible && (
+                          <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse"></div>
                         )}
                       </button>
                     </div>

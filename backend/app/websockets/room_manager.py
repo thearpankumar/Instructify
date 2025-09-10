@@ -122,6 +122,33 @@ class RoomManager:
         for conn in disconnected:
             await self.remove_user_from_room(class_id, conn)
 
+    async def broadcast_to_students(self, class_id: str, message: dict):
+        """Send message only to students in the room"""
+        if class_id not in self.connections:
+            print(f"❌ No connections found for class {class_id}")
+            return
+
+        message_str = json.dumps(message)
+        disconnected = []
+        student_count = 0
+
+        for connection in self.connections[class_id]:
+            user_info = self.user_connections.get(connection, {})
+            if user_info.get("user_type") == "student":
+                student_count += 1
+                try:
+                    await connection.send_text(message_str)
+                    print(f"✅ Sent whiteboard update to student: {user_info.get('user_name', 'Unknown')}")
+                except Exception as e:
+                    print(f"❌ Failed to send to student: {e}")
+                    disconnected.append(connection)
+
+        print(f"📊 Broadcast to {student_count} students in class {class_id}")
+
+        # Clean up disconnected connections
+        for conn in disconnected:
+            await self.remove_user_from_room(class_id, conn)
+
     async def send_to_teachers(self, class_id: str, message: dict):
         """Send message only to teachers in the room"""
         if class_id not in self.connections:

@@ -7,8 +7,7 @@
 [![Next.js 15](https://img.shields.io/badge/Next.js-15.5.2-black?style=flat-square&logo=next.js)](https://nextjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Latest-green?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue?style=flat-square&logo=python)](https://python.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue?style=flat-square&logo=typescript)](https://typescriptlang.org)
-[![Ollama](https://img.shields.io/badge/Ollama-Gemma_270M-purple?style=flat-square)](https://ollama.ai)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue?style=flat-square&logo=typescript)](https://typescriptlang.org) [![Ollama](https://img.shields.io/badge/Ollama-Gemma_270M-purple?style=flat-square)](https://ollama.ai)
 [![WebRTC](https://img.shields.io/badge/WebRTC-Real_Time-orange?style=flat-square)](https://webrtc.org/)
 
 **✨ Revolutionary EdTech Platform with AI-Powered Learning Assistance ✨**
@@ -284,16 +283,16 @@ const notes = await getGeneratedNotes(classId);
 - [x] Cross-browser compatibility
 
 ### Phase 2 - Enhanced Features (In Progress)
-- [ ] Voice transcription and live captions
-- [ ] Automated class notes generation
+- [x] Voice transcription and live captions
+- [x] Automated class notes generation
 - [ ] Advanced analytics dashboard
 - [ ] Enhanced mobile responsiveness
-- [ ] Performance optimization
+- [x] Performance optimization
 
 ### Phase 3 - Advanced Capabilities (Planned)
-- [ ] Interactive whiteboard collaboration
+- [x] Interactive whiteboard collaboration
 - [ ] Breakout room functionality
-- [ ] Multi-language support
+- [x] Multi-language support
 - [ ] Learning analytics and insights
 - [ ] Mobile application (React Native)
 - [ ] Integration with LMS platforms
@@ -368,21 +367,6 @@ git push origin feature/amazing-feature
 | **💾 Memory Usage** | `< 2GB` | `< 4GB` |
 
 *Optimized for speed and scalability* ⚡
-
-</div>
-
----
-
-## 🏆 **Awards & Recognition**
-
-<div align="center">
-
-![Trophy](https://img.shields.io/badge/🏆-Innovation_Award-gold?style=for-the-badge)
-![Star](https://img.shields.io/badge/⭐-Best_EdTech_2024-yellow?style=for-the-badge)
-![Medal](https://img.shields.io/badge/🥇-AI_Excellence-silver?style=for-the-badge)
-
-*"Instructify represents the future of AI-powered education"*
-*- EdTech Innovation Awards 2024*
 
 </div>
 

@@ -34,6 +34,12 @@ class ChatHandler:
             await self.handle_ai_query(class_id, websocket, message_data)
         elif message_type == "webrtc_signal":
             await self.handle_webrtc_signal(class_id, websocket, message_data)
+        elif message_type == "whiteboard_draw":
+            await self.handle_whiteboard_draw(class_id, websocket, message_data)
+        elif message_type == "test_message":
+            print(f"🧪 Test message received: {message_data.get('data')}")
+        else:
+            print(f"❓ Unknown message type: {message_type}")
 
     async def handle_chat_message(
         self, class_id: str, websocket: WebSocket, message_data: dict
@@ -229,6 +235,38 @@ class ChatHandler:
         
         # Use the new WebRTC signaling handler
         await self.room_manager.handle_webrtc_signaling(class_id, websocket, message_data)
+
+    async def handle_whiteboard_draw(
+        self, class_id: str, websocket: WebSocket, message_data: dict
+    ):
+        """Handle whiteboard drawing data"""
+        if not self.room_manager:
+            return
+
+        sender_info = self.room_manager.user_connections.get(websocket, {})
+        sender_type = sender_info.get("user_type", "student")
+        sender_name = sender_info.get("user_name", "Anonymous")
+        
+        print(f"🎨 Whiteboard draw from {sender_name} ({sender_type})")
+        
+        # Only teachers can draw on whiteboard
+        if sender_type != "teacher":
+            print(f"❌ Non-teacher {sender_name} tried to draw on whiteboard")
+            return
+
+        drawing_data = message_data.get("drawing_data", {})
+        print(f"📝 Broadcasting drawing data: {drawing_data}")
+        
+        # Broadcast drawing data to all students
+        await self.room_manager.broadcast_to_students(
+            class_id,
+            {
+                "type": "whiteboard_update",
+                "drawing_data": drawing_data,
+                "timestamp": datetime.now().isoformat()
+            }
+        )
+        print(f"✅ Whiteboard update sent to students in class {class_id}")
 
     def get_chat_history(self, class_id: str) -> List[dict]:
         """Get chat history for a classroom"""
