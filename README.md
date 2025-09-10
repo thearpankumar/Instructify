@@ -275,7 +275,7 @@ const notes = await getGeneratedNotes(classId);
 
 ### Phase 1 - Core Platform (Completed)
 - [x] FastAPI backend with WebSocket support
-- [x] Next.js 15 frontend with TypeScript
+- [x] Next.js 18 frontend with TypeScript
 - [x] Real-time video streaming via WebRTC
 - [x] AI-powered content filtering with Gemini 2.5 Flash Lite
 - [x] Intelligent chat system with dual-layer moderation
@@ -283,11 +283,6 @@ const notes = await getGeneratedNotes(classId);
 - [x] Cross-browser compatibility
 
 ### Phase 2 - Enhanced Features (In Progress)
-:q
-
-
-
-
 
 - [x] Voice transcription and live captions
 - [x] Automated class notes generation
