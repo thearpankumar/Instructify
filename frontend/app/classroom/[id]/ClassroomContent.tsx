@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
+import VoiceTranscription from '../../components/VoiceTranscription';
 
 interface Message {
   id: string;
@@ -820,7 +821,12 @@ export default function ClassroomContent({ classId }: { classId: string }) {
         </div>
 
         {/* Chat Sidebar */}
-        <div className="w-80 bg-white border-l flex flex-col">
+        <div className="w-96 bg-white border-l flex flex-col">
+          {/* Voice Transcription Section */}
+          <div className="border-b">
+            <VoiceTranscription classId={classId} isTeacher={role === 'teacher'} />
+          </div>
+
           {/* Chat Header */}
           <div className="p-4 border-b bg-gray-50">
             <div className="flex items-center justify-between mb-2">

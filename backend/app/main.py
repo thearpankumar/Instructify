@@ -4,11 +4,14 @@ import uuid
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel
 
 # Load environment variables from .env file
 load_dotenv()
 
 from .models.classroom import ClassroomCreate
+from .services.transcription_service import TranscriptionService
 from .websockets.chat_handler import ChatHandler
 from .websockets.room_manager import RoomManager
 
@@ -28,6 +31,17 @@ app.add_middleware(
 # Initialize managers
 room_manager = RoomManager()
 chat_handler = ChatHandler(room_manager)
+transcription_service = TranscriptionService()
+
+
+# Pydantic models for API requests
+class TranscriptChunk(BaseModel):
+    text: str
+    timestamp: str = None
+
+
+class NotesRequest(BaseModel):
+    class_id: str
 
 
 @app.get("/")
@@ -56,6 +70,44 @@ async def get_classroom(class_id: str):
     if not classroom:
         raise HTTPException(status_code=404, detail="Classroom not found")
     return classroom.dict()
+
+
+# Transcription endpoints
+@app.post("/api/transcription/{class_id}/add")
+async def add_transcript_chunk(class_id: str, chunk: TranscriptChunk):
+    """Add a chunk of transcribed text to the class"""
+    transcription_service.add_transcript_chunk(class_id, chunk.text, chunk.timestamp)
+    return {"status": "success", "message": "Transcript chunk added"}
+
+
+@app.get("/api/transcription/{class_id}")
+async def get_transcript(class_id: str):
+    """Get the full transcript for a class"""
+    transcript = transcription_service.get_transcript(class_id)
+    return {"transcript": transcript}
+
+
+@app.post("/api/notes/generate")
+async def generate_notes(request: NotesRequest):
+    """Generate smart notes from class transcript"""
+    notes = await transcription_service.generate_notes(request.class_id)
+    if not notes:
+        raise HTTPException(status_code=404, detail="No transcript found or notes generation failed")
+    return {"notes": notes}
+
+
+@app.get("/api/notes/{class_id}/download")
+async def download_notes(class_id: str):
+    """Download notes as a text file"""
+    notes = await transcription_service.generate_notes(class_id)
+    if not notes:
+        raise HTTPException(status_code=404, detail="No notes available")
+    
+    formatted_notes = transcription_service.export_notes(class_id, notes)
+    return PlainTextResponse(
+        formatted_notes,
+        headers={"Content-Disposition": f"attachment; filename=class_notes_{class_id}.txt"}
+    )
 
 
 @app.websocket("/ws/classroom/{class_id}")
